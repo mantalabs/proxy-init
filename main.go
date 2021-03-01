@@ -80,11 +80,19 @@ func main() {
 	// TODO(sbw): use bootnode to write the *public key* to a file
 	//
 	publicKey := ""
+	klog.Info("Generated public key %s", publicKey)
 
 	//
 	// TODO(sbw): generate a password file with random password and write to passwordPath
 	//
 	password := ""
+	passwordFile, err := os.Create(passwordPath)
+	if err != nil {
+		klog.Fatalf("Unable to create password file: %v", err)
+	}
+	if _, err := passwordFile.WriteString(password); err != nil {
+		klog.Fatalf("Unable to write password file: %v", err)
+	}
 
 	gethImportCmd := exec.Cmd{
 		Path: gethExecPath,
@@ -109,6 +117,7 @@ func main() {
 	//
 	accountAddress := ""
 	accountAddressPath := ""
+	klog.Infof("Extracted account address %s from %s", accountAddress, accountAddressPath)
 
 	//
 	// TODO(sbw): publish enodes (e.g., to a ConfigMap) so the proxy-informer
