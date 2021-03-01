@@ -1,11 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
-	
+
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -28,7 +29,7 @@ func main() {
 	var passwordPath string
 	var internalAddress string
 	var externalAddress string
-	
+
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&privateKeyPath, "private-key", "", "path to write private key to")
 	flag.StringVar(&keystorePath, "keystore", "", "path to keystore")
@@ -65,22 +66,33 @@ func main() {
 	//
 	// Generate a new throw-away key that we plan on passing to the Proxy.
 	//
-	cmdGenkey := exec.Cmd{
-		Path: bootnodeExecPath,
-		Args: []string{bootnodeExecPath, "-genkey", privateKeyPath},
+	cmdGenPrivKey := exec.Cmd{
+		Path:   bootnodeExecPath,
+		Args:   []string{bootnodeExecPath, "-genkey", privateKeyPath},
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
 	}
-	if err := cmdGenkey.Run(); err != nil {
+	if err := cmdGenPrivKey.Run(); err != nil {
 		klog.Fatalf("'bootnode -genkey' failed: %v", err)
 	}
-	klog.Infof("Generated private key %s", privateKeyPath)	
+	klog.Infof("Generated private key at: %s", privateKeyPath)
 
 	//
-	// TODO(sbw): use bootnode to write the *public key* to a file
+	// Use bootnode to compute the public key from the private key
 	//
-	publicKey := ""
-	klog.Info("Generated public key %s", publicKey)
+	publicKeyBuffer := new(bytes.Buffer)
+	cmdGenPubKey := exec.Cmd{
+		Path:   bootnodeExecPath,
+		Args:   []string{bootnodeExecPath, "-writeaddress", "-nodekey", privateKeyPath},
+		Stdout: publicKeyBuffer,
+		Stderr: os.Stderr,
+	}
+	if err := cmdGenPubKey.Run(); err != nil {
+		klog.Fatalf("'bootnode -writeaddress -nodekey' failed: %v", err)
+	}
+	publicKey := publicKeyBuffer.String()
+	klog.Infof("Generated public key: %s", publicKey)
+	return
 
 	//
 	// TODO(sbw): generate a password file with random password and write to passwordPath
@@ -109,7 +121,7 @@ func main() {
 	if err := gethImportCmd.Run(); err != nil {
 		klog.Fatalf("'geth account import' failed: %v", err)
 	}
-	klog.Infof("Imported private key %s", privateKeyPath)	
+	klog.Infof("Imported private key %s", privateKeyPath)
 
 	//
 	// TODO(sbw): extract *account address* from the filename in the keystore
