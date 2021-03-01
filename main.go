@@ -25,10 +25,16 @@ func main() {
 	var kubeconfig string
 	var privateKeyPath string
 	var keystorePath string
+	var passwordPath string
+	var internalAddress string
+	var externalAddress string
 	
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&privateKeyPath, "private-key", "", "path to write private key to")
-	flag.StringVar(&privateKeyPath, "keystore", "", "path to keystore")
+	flag.StringVar(&keystorePath, "keystore", "", "path to keystore")
+	flag.StringVar(&passwordPath, "password", "", "path to write password file to")
+	flag.StringVar(&internalAddress, "internal-address", "", "internal proxy address")
+	flag.StringVar(&externalAddress, "external-address", "", "external proxy address")
 	flag.Parse()
 
 	if privateKeyPath == "" {
@@ -37,19 +43,16 @@ func main() {
 	if keystorePath == "" {
 		klog.Fatalf("-keystore required")
 	}
-	
-	//
-	// Create kubernetes client
-	//
-	if false {
-		clientset, err := newClientset(kubeconfig)
-		if err != nil {
-			klog.Fatalf("Failed to connect to cluster: %v", err)
-		}
-
-		fmt.Printf("clientset=%v\n", clientset)
+	if passwordPath == "" {
+		klog.Fatalf("-password required")
 	}
-		
+	if internalAddress == "" {
+		klog.Fatalf("-internal-address required")
+	}
+	if externalAddress == "" {
+		klog.Fatalf("-external-address required")
+	}
+
 	bootnodeExecPath, err := exec.LookPath(bootnodeFile)
 	if err != nil {
 		klog.Fatalf("Failed to find bootnode: %v", err)
@@ -59,6 +62,9 @@ func main() {
 		klog.Fatalf("Failed to find geth: %v", err)
 	}
 
+	//
+	// Generate a new throw-away key that we plan on passing to the Proxy.
+	//
 	cmdGenkey := exec.Cmd{
 		Path: bootnodeExecPath,
 		Args: []string{bootnodeExecPath, "-genkey", privateKeyPath},
@@ -71,9 +77,14 @@ func main() {
 	klog.Infof("Generated private key %s", privateKeyPath)	
 
 	//
-	// TODO(sbw): generate a password file with random password.
+	// TODO(sbw): use bootnode to write the *public key* to a file
 	//
-	passwordPath := ""
+	publicKey := ""
+
+	//
+	// TODO(sbw): generate a password file with random password and write to passwordPath
+	//
+	password := ""
 
 	gethImportCmd := exec.Cmd{
 		Path: gethExecPath,
@@ -93,9 +104,38 @@ func main() {
 	klog.Infof("Imported private key %s", privateKeyPath)	
 
 	//
-	// TODO(sbw): publish enodes so they can be discovered by the proxy-informer.
+	// TODO(sbw): extract *account address* from the filename in the keystore
+	// or the JSON blob in the file contents.
+	//
+	accountAddress := ""
+	accountAddressPath := ""
+
+	//
+	// TODO(sbw): publish enodes (e.g., to a ConfigMap) so the proxy-informer
+	// will discover them.
+	//
 	// Given the private key file and IP, bootnode will generate the enode.
 	//
+	internalEnode := ""
+	externalEnode := ""
+
+	//
+	// Create kubernetes client
+	//
+	if false {
+		clientset, err := newClientset(kubeconfig)
+		if err != nil {
+			klog.Fatalf("Failed to connect to cluster: %v", err)
+		}
+
+		fmt.Printf("clientset=%v\n", clientset)
+
+		publishEnodes(clientset, internalEnode, externalEnode)
+	}
+}
+
+func publishEnodes(clientset *kubernetes.Clientset, internalEnode string, externalEnode string) (*kubernetes.Clientset, error) {
+	return nil, nil
 }
 
 func newClientset(filename string) (*kubernetes.Clientset, error) {
