@@ -1,4 +1,5 @@
 proxy-init
+e2e/.kubeconfig
 
 # Binaries for programs and plugins
 *.exe
