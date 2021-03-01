@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -12,6 +13,9 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"k8s.io/klog/v2"
+
+	"math/rand"
+	"strings"
 )
 
 //
@@ -19,6 +23,18 @@ import (
 //
 var bootnodeFile = "./bin/bootnode"
 var gethFile = "./bin/geth"
+
+func genPass() string {
+	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
+		"abcdefghijklmnopqrstuvwxyz" +
+		"0123456789")
+	length := 16
+	var b strings.Builder
+	for i := 0; i < length; i++ {
+		b.WriteRune(chars[rand.Intn(len(chars))])
+	}
+	return b.String()
+}
 
 func main() {
 	klog.InitFlags(nil)
@@ -92,12 +108,11 @@ func main() {
 	}
 	publicKey := publicKeyBuffer.String()
 	klog.Infof("Generated public key: %s", publicKey)
-	return
 
 	//
-	// TODO(sbw): generate a password file with random password and write to passwordPath
+	// Generate a password file with random password and write to passwordPath
 	//
-	password := ""
+	password := genPass()
 	passwordFile, err := os.Create(passwordPath)
 	if err != nil {
 		klog.Fatalf("Unable to create password file: %v", err)
@@ -105,6 +120,7 @@ func main() {
 	if _, err := passwordFile.WriteString(password); err != nil {
 		klog.Fatalf("Unable to write password file: %v", err)
 	}
+	return
 
 	gethImportCmd := exec.Cmd{
 		Path: gethExecPath,
