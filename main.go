@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -19,6 +22,10 @@ import (
 	"math/rand"
 	"strings"
 )
+
+// These should match with the values in proxy-informer.
+var internalEnodeKey = "proxy.mantalabs.com/internal-enode-url"
+var externalEnodeKey = "proxy.mantalabs.com/external-enode-url"
 
 //
 // TODO(sbw): change to "bootnode" and "geth" when ready to deploy.
@@ -48,12 +55,16 @@ func main() {
 	var accountAddressPath string
 	var internalAddress string
 	var externalAddress string
+	var podName string
+	var podNamespace string
 
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&privateKeyPath, "private-key", "", "path to write private key to")
 	flag.StringVar(&keystorePath, "keystore", "", "path to keystore")
 	flag.StringVar(&passwordPath, "password", "", "path to write password file to")
 	flag.StringVar(&accountAddressPath, "account-address", "", "path to write account address to")
+	flag.StringVar(&podNamespace, "pod-namespace", "default", "namespace of Pod to annotate")
+	flag.StringVar(&podName, "pod-name", "", "name of Pod to annotate")
 	flag.StringVar(&internalAddress, "internal-address", "", "internal proxy address")
 	flag.StringVar(&externalAddress, "external-address", "", "external proxy address")
 	flag.Parse()
@@ -75,6 +86,9 @@ func main() {
 	}
 	if externalAddress == "" {
 		klog.Fatalf("-external-address required")
+	}
+	if podName == "" {
+		klog.Fatalf("-pod-name required")
 	}
 
 	bootnodeExecPath, err := exec.LookPath(bootnodeFile)
@@ -113,7 +127,7 @@ func main() {
 	if err := cmdGenPubKey.Run(); err != nil {
 		klog.Fatalf("'bootnode -writeaddress -nodekey' failed: %v", err)
 	}
-	publicKey := publicKeyBuffer.String()
+	publicKey := strings.TrimSpace(publicKeyBuffer.String())
 	klog.Infof("Generated public key: %s", publicKey)
 
 	//
@@ -180,34 +194,33 @@ func main() {
 		klog.Fatalf("Couldn't write account address to %s: %v", accountAddressPath, err)
 	}
 	klog.Infof("Wrote account address to %s", accountAddressPath)
-	return
 
-	//
-	// TODO(sbw): publish enodes (e.g., to a ConfigMap) so the proxy-informer
-	// will discover them.
 	//
 	// Given the private key file and IP, bootnode will generate the enode.
 	//
-	internalEnode := ""
-	externalEnode := ""
+	internalEnode := fmt.Sprintf("enode://%s@%s", publicKey, internalAddress)
+	externalEnode := fmt.Sprintf("enode://%s@%s", publicKey, externalAddress)
 
 	//
 	// Create kubernetes client
 	//
-	if false {
-		clientset, err := newClientset(kubeconfig)
-		if err != nil {
-			klog.Fatalf("Failed to connect to cluster: %v", err)
-		}
+	clientset, err := newClientset(kubeconfig)
+	if err != nil {
+		klog.Fatalf("Failed to connect to cluster: %v", err)
+	}
 
-		fmt.Printf("clientset=%v\n", clientset)
-
-		publishEnodes(clientset, internalEnode, externalEnode)
+	//
+	// Publish enodes so that proxy-informers can discover the Proxy.
+	//
+	if err := publishEnodes(clientset, podNamespace, podName, internalEnode, externalEnode); err != nil {
+		klog.Fatalf("Failed to publish enodes: %v", err)
 	}
 }
 
-func publishEnodes(clientset *kubernetes.Clientset, internalEnode string, externalEnode string) (*kubernetes.Clientset, error) {
-	return nil, nil
+func publishEnodes(clientset *kubernetes.Clientset, podNamespace string, podName string, internalEnode string, externalEnode string) error {
+	patch := fmt.Sprintf(`{"metadata":{"annotations": {"%s":"%s", "%s":"%s"}}}`, internalEnodeKey, internalEnode, externalEnodeKey, externalEnode)
+	_, err := clientset.CoreV1().Pods(podNamespace).Patch(context.TODO(), podName, types.StrategicMergePatchType, []byte(patch), metav1.PatchOptions{})
+	return err
 }
 
 func newClientset(filename string) (*kubernetes.Clientset, error) {
