@@ -1,0 +1,96 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: proxy
+spec:
+  serviceName: proxy
+  replicas: 1
+  selector:
+    matchLabels:
+      app: proxy
+  volumeClaimTemplates:
+    - metadata:
+        name: celo-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 16Gi
+  template:
+    metadata:
+      labels:
+        app: proxy
+    spec:
+      automountServiceAccountToken: true
+      serviceAccount: proxy
+      serviceAccountName: proxy
+      volumes:
+        - name: celo-data
+          persistentVolumeClaim:
+            claimName: celo-data
+        - name: init
+          emptyDir:
+            medium: Memory             
+      initContainers:
+        - name: init-proxy
+          image: mantalabs/proxy-init:e2e          
+          args:
+            - -private-key=/root/.celo-init/private-key
+            - -account-address=/root/.celo-init/account-address
+            - -internal-address=192.0.2.100:30305
+            - -external-address=198.51.100.100:30303
+            - -pod-name=$(POD_NAME)
+            - -pod-namespace=$(POD_NAMESPACE)
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - name: init
+              mountPath: /root/.celo-init
+        - name: init-keystore
+          image: us.gcr.io/celo-org/geth:1.2.3
+          command:
+            - 'sh'
+            - '-c'
+            - 'echo a > /root/.celo/.password && geth account import --password=/root/.celo/.password /root/.celo-init/private-key'
+          volumeMounts:
+            - name: celo-data
+              mountPath: /root/.celo
+            - name: init
+              mountPath: /root/.celo-init
+      containers:
+        - name: celo
+          image: us.gcr.io/celo-org/geth:1.2.3
+          args:
+            - --verbosity=3
+            - --syncmode=full
+            - --rpc
+            - --rpcaddr=0.0.0.0
+            - --rpcapi=eth,istanbul
+            - --datadir=/root/.celo
+            - --password=/root/.celo/.password
+            - --nousb
+            - --baklava
+            - --allow-insecure-unlock
+            - --nodekey=/root/.celo-init/private-key
+            - --unlock=0
+            - --etherbase=0
+            - --proxy.proxy
+            - --proxy.proxiedvalidatoraddress=0x707301aB8EaB42849408e2b8eC54dB4bdf36e05b
+            - --proxy.internalendpoint=:30503
+            - --nat=extip:198.51.100.100
+          volumeMounts:
+            - name: celo-data
+              mountPath: /root/.celo
+            - name: init
+              mountPath: /root/.celo-init

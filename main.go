@@ -27,11 +27,8 @@ import (
 var internalEnodeKey = "proxy.mantalabs.com/internal-enode-url"
 var externalEnodeKey = "proxy.mantalabs.com/external-enode-url"
 
-//
-// TODO(sbw): change to "bootnode" and "geth" when ready to deploy.
-//
-var bootnodeFile = "./bin/bootnode"
-var gethFile = "./bin/geth"
+var bootnodeFile = "bootnode"
+var gethFile = "geth"
 
 func genPass() string {
 	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
@@ -50,8 +47,6 @@ func main() {
 
 	var kubeconfig string
 	var privateKeyPath string
-	var keystorePath string
-	var passwordPath string
 	var accountAddressPath string
 	var internalAddress string
 	var externalAddress string
@@ -60,8 +55,6 @@ func main() {
 
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "absolute path to the kubeconfig file")
 	flag.StringVar(&privateKeyPath, "private-key", "", "path to write private key to")
-	flag.StringVar(&keystorePath, "keystore", "", "path to keystore")
-	flag.StringVar(&passwordPath, "password", "", "path to write password file to")
 	flag.StringVar(&accountAddressPath, "account-address", "", "path to write account address to")
 	flag.StringVar(&podNamespace, "pod-namespace", "default", "namespace of Pod to annotate")
 	flag.StringVar(&podName, "pod-name", "", "name of Pod to annotate")
@@ -71,12 +64,6 @@ func main() {
 
 	if privateKeyPath == "" {
 		klog.Fatalf("-private-key required")
-	}
-	if keystorePath == "" {
-		klog.Fatalf("-keystore required")
-	}
-	if passwordPath == "" {
-		klog.Fatalf("-password required")
 	}
 	if accountAddressPath == "" {
 		klog.Fatalf("-account-address required")
@@ -133,11 +120,24 @@ func main() {
 	//
 	// Generate a password file with random password and write to passwordPath
 	//
+	passwordFile, err := ioutil.TempFile("/dev/shm", "password")
+	if err != nil {
+		klog.Fatalf("Unable to create password file in /dev/shm: %v", err)
+	}
+
 	password := genPass()
+	passwordPath := passwordFile.Name()
 	err = ioutil.WriteFile(passwordPath, []byte(password), 0600)
 	if err != nil {
 		klog.Fatalf("Unable to create password file: %v", err)
 	}
+	defer os.Remove(passwordPath)
+
+	keystorePath, err := ioutil.TempDir("/dev/shm", "keystore")
+	if err != nil {
+		klog.Fatalf("Unable to create keystore in /dev/shm: %v", err)
+	}
+	defer os.RemoveAll(keystorePath)
 
 	gethImportCmd := exec.Cmd{
 		Path: gethExecPath,
@@ -181,11 +181,13 @@ func main() {
 	if err != nil {
 		klog.Fatalf("Couldn't read keystore file %s: %v", keystoreJsonPath, err)
 	}
+
 	var keystore map[string]interface{}
 	err = json.Unmarshal([]byte(keystoreJsonContent), &keystore)
 	if err != nil {
 		klog.Fatalf("Couldn't unmarshal keystore data: %v", err)
 	}
+
 	accountAddress := keystore["address"]
 	klog.Infof("Extracted account address from keytore: %s", accountAddress)
 	// (3) Write the address to he requested path
