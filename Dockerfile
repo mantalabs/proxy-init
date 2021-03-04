@@ -5,7 +5,7 @@ COPY . /app
 
 RUN go build
 
-FROM alpine:3.12
+FROM us.gcr.io/celo-org/geth-all:1.2.3
 
 COPY --from=builder /app/proxy-init /usr/bin/proxy-init
 ENTRYPOINT ["proxy-init"]

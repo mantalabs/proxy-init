@@ -55,8 +55,11 @@ def main(delete_cluster=None,
     if docker_build:
         subprocess.check_call([
             'docker', 'build',
-            '-t', 'mantalabs/proxy-informer:e2e', '.'])
-        kind('load', 'docker-image', 'mantalabs/proxy-informer:e2e')
+            '-t', 'mantalabs/proxy-init:e2e', '.'])
+        kind('load', 'docker-image', 'mantalabs/proxy-init:e2e')
+
+    kubectl('apply', '-f', 'e2e/rbac.yaml')
+    kubectl('apply', '-f', 'e2e/statefulset-tests.yaml')
 
 
 def parse_args():
