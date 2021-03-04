@@ -61,6 +61,36 @@ def main(delete_cluster=None,
     kubectl('apply', '-f', 'e2e/rbac.yaml')
     kubectl('apply', '-f', 'e2e/statefulset-tests.yaml')
 
+    started_at = time.time()
+    timeout_at = started_at + timeout
+    while True:
+        try:
+            # Ensure proxy container starts
+            proxy_statefulset = kubectl('get', 'statefulset/proxy', '-o', 'json', json_output=True)
+            proxy_replicas = proxy_statefulset['status']['replicas']
+            # readyReplicas does not exist if the initContainers are still running
+            proxy_ready_replicas = proxy_statefulset['status'].get('readyReplicas')
+            assert proxy_replicas == proxy_ready_replicas
+
+            # Ensure enodes are published to Pod annotations
+            proxy_pod = kubectl('get', 'pod/proxy-0', '-o', 'json', json_output=True)
+            assert 'proxy.mantalabs.com/external-enode-url' in proxy_pod['metadata']['annotations']
+            assert 'proxy.mantalabs.com/internal-enode-url' in proxy_pod['metadata']['annotations']
+            break
+        except (AssertionError, subprocess.CalledProcessError) as error:
+            if time.time() < timeout_at:
+                sleep_seconds = 5
+                print(f'Waiting {sleep_seconds} seconds...')
+                time.sleep(sleep_seconds)
+                continue
+
+            print('\nTimeout out or assertion failed!\n', error)
+            kubectl('describe', 'statefulset/proxy')
+            kubectl('describe', 'pod/proxy-0')
+            raise error
+
+    print(f'\nSuccess ({time.time() - started_at} seconds)\n')
+
 
 def parse_args():
     parser = argparse.ArgumentParser('Run an e2e test')
@@ -90,6 +120,9 @@ def parse_args():
     parser.add_argument('--no-docker-build',
                         dest='docker_build',
                         action='store_false')
+    parser.add_argument('--timeout',
+                        default=90,
+                        type=float)
 
     parser.set_defaults(
         delete_cluster=True,
