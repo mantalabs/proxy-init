@@ -39,7 +39,7 @@ spec:
           args:
             - -private-key=/root/.celo-init/private-key
             - -account-address=/root/.celo-init/account-address
-            - -internal-address=192.0.2.100:30305
+            - -internal-address=192.0.2.100:30503
             - -external-address=198.51.100.100:30303
             - -pod-name=$(POD_NAME)
             - -pod-namespace=$(POD_NAMESPACE)
