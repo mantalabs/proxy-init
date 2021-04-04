@@ -7,12 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/sethvargo/go-password/password"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -28,16 +28,12 @@ var externalEnodeKey = "proxy.mantalabs.com/external-enode-url"
 var bootnodeFile = "bootnode"
 var gethFile = "geth"
 
-func genPass() string {
-	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
-		"abcdefghijklmnopqrstuvwxyz" +
-		"0123456789")
-	length := 16
-	var b strings.Builder
-	for i := 0; i < length; i++ {
-		b.WriteRune(chars[rand.Intn(len(chars))])
+func generatePassword() string {
+	res, err := password.Generate(64, 10, 10, false, false)
+	if err != nil {
+		klog.Fatalf("Unable to generate password: %v", err)
 	}
-	return b.String()
+	return res
 }
 
 func main() {
@@ -123,7 +119,7 @@ func main() {
 		klog.Fatalf("Unable to create password file in /dev/shm: %v", err)
 	}
 
-	password := genPass()
+	password := generatePassword()
 	passwordPath := passwordFile.Name()
 	err = ioutil.WriteFile(passwordPath, []byte(password), 0600)
 	if err != nil {
@@ -189,6 +185,7 @@ func main() {
 	accountAddress := keystore["address"]
 	klog.Infof("Extracted account address from keytore: %s", accountAddress)
 	// (3) Write the address to he requested path
+	// #nosec G306
 	err = ioutil.WriteFile(accountAddressPath, []byte(accountAddress.(string)), 0644)
 	if err != nil {
 		klog.Fatalf("Couldn't write account address to %s: %v", accountAddressPath, err)
