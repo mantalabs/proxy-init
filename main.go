@@ -10,17 +10,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
+	"github.com/sethvargo/go-password/password"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-
 	"k8s.io/klog/v2"
-
-	"math/rand"
-	"strings"
 )
 
 // These should match with the values in proxy-informer.
@@ -30,16 +28,12 @@ var externalEnodeKey = "proxy.mantalabs.com/external-enode-url"
 var bootnodeFile = "bootnode"
 var gethFile = "geth"
 
-func genPass() string {
-	chars := []rune("ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
-		"abcdefghijklmnopqrstuvwxyz" +
-		"0123456789")
-	length := 16
-	var b strings.Builder
-	for i := 0; i < length; i++ {
-		b.WriteRune(chars[rand.Intn(len(chars))])
+func generatePassword() string {
+	res, err := password.Generate(64, 10, 10, false, false)
+	if err != nil {
+		klog.Fatalf("Unable to generate password: %v", err)
 	}
-	return b.String()
+	return res
 }
 
 func main() {
@@ -125,7 +119,7 @@ func main() {
 		klog.Fatalf("Unable to create password file in /dev/shm: %v", err)
 	}
 
-	password := genPass()
+	password := generatePassword()
 	passwordPath := passwordFile.Name()
 	err = ioutil.WriteFile(passwordPath, []byte(password), 0600)
 	if err != nil {
@@ -163,27 +157,27 @@ func main() {
 	//
 	//   keystore-path/UTC--2021-03-01T05-17-12.173336000Z--2754599e48ca29f1998c31e7c668c33bff5e5bf2
 	//
-	keystoreJsonPath := ""
+	keystoreJSONPath := ""
 	matchCount := 0
 	matches, err := filepath.Glob(keystorePath + "/*")
 	if err != nil {
 		klog.Fatalf("Couldn't expand glob: %s/*: %v", keystorePath, err)
 	}
 	for _, match := range matches {
-		keystoreJsonPath = match
-		matchCount += 1
+		keystoreJSONPath = match
+		matchCount++
 	}
 	if matchCount != 1 {
 		klog.Fatalf("Expected exactly 1 file in keystore; got: %d", matchCount)
 	}
 	// (2) Load the JSON blob to extract the address.
-	keystoreJsonContent, err := ioutil.ReadFile(keystoreJsonPath)
+	keystoreJSONContent, err := ioutil.ReadFile(keystoreJSONPath)
 	if err != nil {
-		klog.Fatalf("Couldn't read keystore file %s: %v", keystoreJsonPath, err)
+		klog.Fatalf("Couldn't read keystore file %s: %v", keystoreJSONPath, err)
 	}
 
 	var keystore map[string]interface{}
-	err = json.Unmarshal([]byte(keystoreJsonContent), &keystore)
+	err = json.Unmarshal(keystoreJSONContent, &keystore)
 	if err != nil {
 		klog.Fatalf("Couldn't unmarshal keystore data: %v", err)
 	}
@@ -191,6 +185,7 @@ func main() {
 	accountAddress := keystore["address"]
 	klog.Infof("Extracted account address from keytore: %s", accountAddress)
 	// (3) Write the address to he requested path
+	// #nosec G306
 	err = ioutil.WriteFile(accountAddressPath, []byte(accountAddress.(string)), 0644)
 	if err != nil {
 		klog.Fatalf("Couldn't write account address to %s: %v", accountAddressPath, err)
@@ -219,9 +214,19 @@ func main() {
 	}
 }
 
-func publishEnodes(clientset *kubernetes.Clientset, podNamespace string, podName string, internalEnode string, externalEnode string) error {
-	patch := fmt.Sprintf(`{"metadata":{"annotations": {"%s":"%s", "%s":"%s"}}}`, internalEnodeKey, internalEnode, externalEnodeKey, externalEnode)
-	_, err := clientset.CoreV1().Pods(podNamespace).Patch(context.TODO(), podName, types.StrategicMergePatchType, []byte(patch), metav1.PatchOptions{})
+func publishEnodes(clientset *kubernetes.Clientset, podNamespace, podName, internalEnode, externalEnode string) error {
+	patch := fmt.Sprintf(
+		`{"metadata":{"annotations": {"%s":"%s", "%s":"%s"}}}`,
+		internalEnodeKey,
+		internalEnode,
+		externalEnodeKey,
+		externalEnode)
+	_, err := clientset.CoreV1().Pods(podNamespace).Patch(
+		context.TODO(),
+		podName,
+		types.StrategicMergePatchType,
+		[]byte(patch),
+		metav1.PatchOptions{})
 	return err
 }
 

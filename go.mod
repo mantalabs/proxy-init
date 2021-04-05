@@ -14,6 +14,7 @@ require (
 	github.com/juju/ratelimit v1.0.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
+	github.com/sethvargo/go-password v0.2.0
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/ugorji/go v1.2.4 // indirect
 	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110 // indirect
